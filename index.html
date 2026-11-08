@@ -60,6 +60,8 @@
     <input id="officer" autocomplete="name">
     <button id="loginBtn">Open scanner</button>
     <p class="err" id="loginErr"></p>
+    <p class="muted" id="connInfo" style="margin:10px 0 0" hidden>Connected to the org's sheet.
+      <a href="#" id="changeConn" style="color:#1A73E8">Change connection</a></p>
   </section>
 
   <section id="pick" class="card" hidden>
@@ -102,8 +104,16 @@
     const m = location.hash.match(/api=([^&]+)/);
     if (m) { API = decodeURIComponent(m[1]); try { localStorage.setItem('scanApi', API); } catch (e) {} }
     if (!API) { try { API = localStorage.getItem('scanApi') || ''; } catch (e) {} }
-    if (!API) $('apiBox').hidden = false;
+    if (!API) $('apiBox').hidden = false; else $('connInfo').hidden = false;
   })();
+  function askForApi() {
+    API = '';
+    try { localStorage.removeItem('scanApi'); } catch (e) {}
+    $('api').value = '';
+    $('apiBox').hidden = false;
+    $('connInfo').hidden = true;
+  }
+  $('changeConn').onclick = e => { e.preventDefault(); askForApi(); };
 
   const ACTIONS = {
     scannerLogin: (pin) => ({ action: 'login', pin }),
@@ -121,7 +131,12 @@
     try {
       res = await fetch(API, { method: 'POST', redirect: 'follow',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(ACTIONS[fn].apply(null, args)) });
-    } catch (e) { throw new Error('No connection. Check the internet and try again.'); }
+    } catch (e) {
+      throw new Error(navigator.onLine === false
+        ? 'No internet connection. Check the internet and try again.'
+        : 'Could not reach the sheet. Ask the admin to check that the latest code is deployed ' +
+          '(Deploy > Manage deployments > Edit > New version) and that the connection link is correct.');
+    }
     let out;
     try { out = await res.json(); } catch (e) { throw new Error('The scanner link is not working. Ask the admin to check the Scanner Link.'); }
     if (!out.ok) throw new Error(out.error || 'Something went wrong.');
@@ -172,7 +187,10 @@
         sel.appendChild(o);
       });
       show('pick');
-    } catch (e) { $('loginErr').textContent = msg(e); }
+    } catch (e) {
+      $('loginErr').textContent = msg(e);
+      if (!/PIN/i.test(msg(e))) askForApi();
+    }
     finally { $('loginBtn').disabled = false; }
   };
   $('pin').addEventListener('keydown', e => { if (e.key === 'Enter') $('loginBtn').click(); });
