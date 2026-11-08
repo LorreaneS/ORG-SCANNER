@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<title>Attendance Scanner</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root { --navy:#1F3A5F; --ink:#202124; --muted:#5F6368; --line:#D5DCE6; --bg:#F4F7FB;
+          --ok:#137333; --okbg:#E6F4EA; --warn:#B06000; --warnbg:#FEF7E0; --bad:#C5221F; --badbg:#FCE8E6; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: Roboto, -apple-system, "Segoe UI", Arial, sans-serif; color:var(--ink); background:var(--bg); }
+  header { background:var(--navy); color:#fff; padding:14px 16px; font-weight:600; font-size:16px; }
+  header small { display:block; font-weight:400; opacity:.75; font-size:12px; margin-top:2px; }
+  main { max-width:520px; margin:0 auto; padding:16px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px; }
+  h1 { font-size:18px; margin:0 0 4px; color:var(--navy); }
+  p.muted, .muted { color:var(--muted); font-size:13px; margin:0 0 12px; }
+  label { display:block; font-size:13px; font-weight:600; margin:12px 0 6px; }
+  input, select { width:100%; padding:12px; font-size:16px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+  button { width:100%; padding:13px; font-size:16px; font-weight:600; border:0; border-radius:8px;
+           background:var(--navy); color:#fff; margin-top:14px; cursor:pointer; }
+  button.secondary { background:#fff; color:var(--navy); border:1px solid var(--navy); }
+  button:disabled { opacity:.6; }
+  .err { color:var(--bad); font-size:14px; min-height:20px; margin:10px 0 0; }
+  .bar { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  .evname { font-weight:700; font-size:16px; color:var(--navy); }
+  .count { text-align:center; background:var(--navy); color:#fff; border-radius:10px; padding:6px 12px; min-width:84px; }
+  .count span { display:block; font-size:24px; font-weight:700; line-height:1.1; }
+  .count small { font-size:11px; opacity:.8; }
+  #reader { width:100%; border-radius:12px; overflow:hidden; background:#000; margin-top:12px; min-height:60px; }
+  #reader video { border-radius:12px; }
+  .result { border-radius:12px; padding:16px; margin-top:12px; text-align:center; border:2px solid transparent; }
+  .result .t { font-size:20px; font-weight:700; }
+  .result .s { font-size:14px; margin-top:4px; }
+  .idle { background:#fff; color:var(--muted); border-color:var(--line); }
+  .ok { background:var(--okbg); color:var(--ok); border-color:var(--ok); }
+  .warn { background:var(--warnbg); color:var(--warn); border-color:var(--warn); }
+  .bad { background:var(--badbg); color:var(--bad); border-color:var(--bad); }
+  details { margin-top:12px; } summary { cursor:pointer; color:var(--navy); font-weight:600; font-size:14px; }
+  .row { display:flex; gap:8px; } .row input { flex:1; } .row button { width:auto; margin-top:0; padding:12px 16px; }
+  ul { list-style:none; padding:0; margin:8px 0 0; }
+  li { display:flex; justify-content:space-between; padding:9px 2px; border-bottom:1px solid var(--line); font-size:14px; }
+  li span:last-child { color:var(--muted); }
+  h3 { font-size:14px; margin:16px 0 0; color:var(--navy); }
+  [hidden] { display:none !important; }
+</style></head>
+<body>
+<header id="hdr">Attendance Scanner<small id="org">Org System</small></header>
+<main>
+  <section id="login" class="card">
+    <h1>Officer sign-in</h1>
+    <p class="muted">Enter the Scanner PIN from the Settings tab.</p>
+    <div id="apiBox" hidden>
+      <label for="api">Scanner connection link</label>
+      <input id="api" autocomplete="off" placeholder="https://script.google.com/macros/s/.../exec">
+      <p class="muted" style="margin-top:6px">Open this page using the Scanner Link from the Settings tab, or paste the Web app link (ends in /exec).</p>
+    </div>
+    <label for="pin">Scanner PIN</label>
+    <input id="pin" type="password" inputmode="numeric" autocomplete="off">
+    <label for="officer">Your name (saved as "Scanned by")</label>
+    <input id="officer" autocomplete="name">
+    <button id="loginBtn">Open scanner</button>
+    <p class="err" id="loginErr"></p>
+  </section>
+
+  <section id="pick" class="card" hidden>
+    <h1>Choose the event</h1>
+    <label for="event">Event</label>
+    <select id="event"></select>
+    <button id="startBtn">Start scanning</button>
+  </section>
+
+  <section id="scan" hidden>
+    <div class="card">
+      <div class="bar">
+        <div><div class="evname" id="evName"></div><div class="muted" id="evMeta" style="margin:0"></div></div>
+        <div class="count"><span id="count">0</span><small>checked in</small></div>
+      </div>
+      <div id="reader"></div>
+      <div id="result" class="result idle"><div class="t">Ready</div><div class="s">Point the camera at a member's QR code</div></div>
+      <details>
+        <summary>No QR? Type Member ID or Student No.</summary>
+        <div class="row" style="margin-top:10px"><input id="manual" autocomplete="off"><button id="manualBtn">Check in</button></div>
+        <label for="photo">Or take a photo of the QR</label>
+        <input id="photo" type="file" accept="image/*" capture="environment">
+      </details>
+      <h3>Recent check-ins</h3>
+      <ul id="recent"></ul>
+    </div>
+    <button class="secondary" id="changeBtn">Change event</button>
+  </section>
+  <div id="filereader" hidden></div>
+</main>
+<script>
+  const $ = id => document.getElementById(id);
+  let PIN = '', EVENTS = [], EV = null, qr = null, busy = false, lastCode = '', lastAt = 0;
+
+  try { $('officer').value = localStorage.getItem('scanOfficer') || ''; } catch (e) {}
+
+  // Connection to the Google Sheet (Apps Script web app, /exec link).
+  let API = '';
+  (function () {
+    const m = location.hash.match(/api=([^&]+)/);
+    if (m) { API = decodeURIComponent(m[1]); try { localStorage.setItem('scanApi', API); } catch (e) {} }
+    if (!API) { try { API = localStorage.getItem('scanApi') || ''; } catch (e) {} }
+    if (!API) $('apiBox').hidden = false;
+  })();
+
+  const ACTIONS = {
+    scannerLogin: (pin) => ({ action: 'login', pin }),
+    scannerEventCount: (pin, eventId) => ({ action: 'count', pin, eventId }),
+    scannerCheckIn: (pin, eventId, code, officer, manual) => ({ action: 'checkIn', pin, eventId, code, officer, manual }),
+  };
+  async function call(fn) {
+    const args = Array.prototype.slice.call(arguments, 1);
+    if (!API) {
+      const typed = ($('api').value || '').trim();
+      if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(typed)) throw new Error('Paste the scanner connection link (it ends in /exec).');
+      API = typed; try { localStorage.setItem('scanApi', API); } catch (e) {}
+    }
+    let res;
+    try {
+      res = await fetch(API, { method: 'POST', redirect: 'follow',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(ACTIONS[fn].apply(null, args)) });
+    } catch (e) { throw new Error('No connection. Check the internet and try again.'); }
+    let out;
+    try { out = await res.json(); } catch (e) { throw new Error('The scanner link is not working. Ask the admin to check the Scanner Link.'); }
+    if (!out.ok) throw new Error(out.error || 'Something went wrong.');
+    return out.data;
+  }
+  function msg(e) { return (e && e.message) ? e.message.replace(/^Exception: /, '') : String(e); }
+  function show(id) { ['login', 'pick', 'scan'].forEach(s => $(s).hidden = (s !== id)); }
+
+  function setResult(kind, title, sub) {
+    const r = $('result');
+    r.className = 'result ' + kind;
+    r.innerHTML = '';
+    const t = document.createElement('div'); t.className = 't'; t.textContent = title; r.appendChild(t);
+    if (sub) { const s = document.createElement('div'); s.className = 's'; s.textContent = sub; r.appendChild(s); }
+  }
+
+  let audio;
+  function beep(freq, ms) {
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.frequency.value = freq; o.connect(g); g.connect(audio.destination);
+      g.gain.setValueAtTime(0.15, audio.currentTime); o.start();
+      o.stop(audio.currentTime + ms / 1000);
+    } catch (e) {}
+  }
+  function feedback(kind) {
+    if (kind === 'ok') { beep(880, 120); try { navigator.vibrate && navigator.vibrate(80); } catch (e) {} }
+    else { beep(220, 300); try { navigator.vibrate && navigator.vibrate([120, 80, 120]); } catch (e) {} }
+  }
+
+  $('loginBtn').onclick = async () => {
+    PIN = $('pin').value.trim();
+    const officer = $('officer').value.trim();
+    if (!PIN) { $('loginErr').textContent = 'Enter the PIN.'; return; }
+    if (!officer) { $('loginErr').textContent = 'Enter your name.'; return; }
+    try { localStorage.setItem('scanOfficer', officer); } catch (e) {}
+    $('loginBtn').disabled = true; $('loginErr').textContent = '';
+    try {
+      const r = await call('scannerLogin', PIN);
+      $('org').textContent = r.org;
+      EVENTS = r.events;
+      if (!EVENTS.length) { $('loginErr').textContent = 'No events are open for scanning. In the Events tab, set "Scanning Open?" to Yes.'; return; }
+      const sel = $('event'); sel.innerHTML = '';
+      EVENTS.forEach(e => {
+        const o = document.createElement('option');
+        o.value = e.id; o.textContent = e.name + (e.date ? ' — ' + e.date : '');
+        sel.appendChild(o);
+      });
+      show('pick');
+    } catch (e) { $('loginErr').textContent = msg(e); }
+    finally { $('loginBtn').disabled = false; }
+  };
+  $('pin').addEventListener('keydown', e => { if (e.key === 'Enter') $('loginBtn').click(); });
+
+  $('startBtn').onclick = async () => {
+    EV = EVENTS.find(e => e.id === $('event').value);
+    $('evName').textContent = EV.name;
+    $('evMeta').textContent = [EV.date, EV.venue].filter(Boolean).join(' · ');
+    $('recent').innerHTML = '';
+    $('count').textContent = '…';
+    setResult('idle', 'Ready', "Point the camera at a member's QR code");
+    show('scan');
+    call('scannerEventCount', PIN, EV.id).then(n => $('count').textContent = n).catch(() => $('count').textContent = '0');
+    startCamera();
+  };
+
+  async function startCamera() {
+    if (!window.Html5Qrcode) { setResult('warn', 'Camera scanner did not load', 'Use the box below to type the Member ID.'); return; }
+    if (!qr) qr = new Html5Qrcode('reader');
+    try {
+      await qr.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 240, height: 240 } }, onScan, () => {});
+    } catch (e) {
+      setResult('warn', 'Camera not available', msg(e) + ' Allow camera access, or use the box below.');
+    }
+  }
+  async function stopCamera() { try { if (qr && qr.isScanning) await qr.stop(); } catch (e) {} }
+
+  function onScan(text) {
+    const now = Date.now();
+    if (busy || (text === lastCode && now - lastAt < 5000)) return;
+    lastCode = text; lastAt = now;
+    checkIn(text, false);
+  }
+
+  async function checkIn(code, manual) {
+    busy = true;
+    try { if (qr && qr.isScanning) qr.pause(true); } catch (e) {}
+    setResult('idle', 'Checking…', '');
+    try {
+      const r = await call('scannerCheckIn', PIN, EV.id, code, $('officer').value.trim(), manual);
+      if (r.status === 'ok') {
+        setResult('ok', '✓ ' + r.name, [r.id, r.detail, r.time].filter(Boolean).join(' · '));
+        $('count').textContent = r.count;
+        const li = document.createElement('li');
+        const a = document.createElement('span'); a.textContent = r.name;
+        const b = document.createElement('span'); b.textContent = r.time;
+        li.appendChild(a); li.appendChild(b);
+        $('recent').prepend(li);
+        while ($('recent').children.length > 10) $('recent').lastChild.remove();
+        feedback('ok');
+      } else if (r.status === 'duplicate') {
+        setResult('warn', 'Already checked in', r.name + (r.time ? ' at ' + r.time : ''));
+        feedback('warn');
+      } else {
+        setResult('bad', 'Not checked in', r.message);
+        feedback('bad');
+      }
+    } catch (e) {
+      setResult('bad', 'Error', msg(e));
+      feedback('bad');
+    }
+    setTimeout(() => { busy = false; try { if (qr && qr.isScanning) qr.resume(); } catch (e) {} }, 1500);
+  }
+
+  $('manualBtn').onclick = () => {
+    const v = $('manual').value.trim();
+    if (!v || busy) return;
+    $('manual').value = '';
+    checkIn(v, true);
+  };
+  $('manual').addEventListener('keydown', e => { if (e.key === 'Enter') $('manualBtn').click(); });
+
+  $('photo').onchange = async () => {
+    const f = $('photo').files[0];
+    if (!f || !window.Html5Qrcode) return;
+    try {
+      const text = await new Html5Qrcode('filereader').scanFile(f, false);
+      checkIn(text, false);
+    } catch (e) { setResult('bad', 'No QR found in the photo', 'Try again closer, with good light.'); }
+    $('photo').value = '';
+  };
+
+  $('changeBtn').onclick = async () => { await stopCamera(); show('pick'); };
+</script>
+</body></html>
